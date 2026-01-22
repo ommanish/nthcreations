@@ -1,0 +1,29 @@
+{
+  "name": "nthcreation",
+  "version": "2.0.0",
+  "description": "UX Intelligence Platform for AI Products — Identify experience risks before development begins",
+  "private": true,
+  "keywords": [
+    "ux-analysis",
+    "ai-products",
+    "user-experience",
+    "ux-intelligence",
+    "design-validation",
+    "ai-ux",
+    "product-design"
+  ],
+  "scripts": {
+    "dev": "pnpm -r dev",
+    "dev:staging": "NODE_ENV=staging pnpm -r dev",
+    "dev:production": "NODE_ENV=production pnpm -r dev",
+    "build": "pnpm -r build",
+    "build:staging": "NODE_ENV=staging pnpm -r build",
+    "build:production": "NODE_ENV=production pnpm -r build",
+    "start": "pnpm -r start",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
