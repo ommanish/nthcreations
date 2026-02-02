@@ -15,6 +15,7 @@ Each environment has its own configuration file in `apps/api/`:
 ### Setup
 
 1. **Development**
+
 ```bash
 # Copy example file
 cp apps/api/.env.example apps/api/.env
@@ -24,12 +25,14 @@ cp apps/api/.env.example apps/api/.env
 ```
 
 2. **Staging**
+
 ```bash
 # Edit apps/api/.env.staging
 # Set your staging OpenAI API key
 ```
 
 3. **Production**
+
 ```bash
 # Edit apps/api/.env.production
 # Set your production OpenAI API key
@@ -106,6 +109,7 @@ vercel --prod
 ```
 
 Set environment variables in Vercel dashboard:
+
 - `OPENAI_API_KEY`
 - `NODE_ENV=production`
 
