@@ -3,6 +3,7 @@
 ## 🚀 Deployment Architecture
 
 **3 Environments:**
+
 - **Development**: Local (localhost:3000 + localhost:4000)
 - **Staging**: Vercel + Railway/Render
 - **Production**: Vercel + Railway/Render
@@ -17,16 +18,19 @@
 
 1. **Create Railway Account**: https://railway.app
 2. **Install Railway CLI**:
+
    ```bash
    npm install -g @railway/cli
    ```
 
 3. **Login**:
+
    ```bash
    railway login
    ```
 
 4. **Deploy Staging API**:
+
    ```bash
    cd apps/api
    railway init
@@ -35,6 +39,7 @@
    ```
 
 5. **Add Environment Variables**:
+
    ```bash
    railway variables set OPENAI_API_KEY=your_key_here
    railway variables set NODE_ENV=staging
@@ -96,16 +101,19 @@
 After deployment, you'll have:
 
 ### Development (Local)
+
 - **Frontend**: http://localhost:3000
 - **API**: http://localhost:4000
 - **Run**: `pnpm dev`
 
 ### Staging
+
 - **Frontend**: https://nthcreation-staging.vercel.app
 - **API**: https://nthcreation-api-staging.railway.app
 - **Auto-deploys**: Push to `staging` branch
 
 ### Production
+
 - **Frontend**: https://nthcreation.vercel.app
 - **API**: https://nthcreation-api.railway.app
 - **Auto-deploys**: Push to `main` branch
@@ -117,6 +125,7 @@ After deployment, you'll have:
 After deploying the API, update these files with your actual URLs:
 
 1. `apps/web/.env.staging`:
+
    ```
    NEXT_PUBLIC_API_URL=https://YOUR-ACTUAL-STAGING-URL.railway.app
    ```
@@ -135,10 +144,12 @@ After deploying the API, update these files with your actual URLs:
 Your GitHub Actions are already configured but need deployment steps:
 
 **For Production** (`.github/workflows/deploy.yml`):
+
 - Triggers on push to `main`
 - Vercel will auto-deploy on push
 
 **For Staging** (`.github/workflows/staging.yml`):
+
 - Triggers on push to `staging`/`develop`
 - Vercel will auto-deploy on push
 
@@ -149,6 +160,7 @@ Your GitHub Actions are already configured but need deployment steps:
 After deployment:
 
 1. **Test API Health**:
+
    ```bash
    curl https://your-api-url.railway.app/health
    # Should return: {"status":"ok","timestamp":"..."}
@@ -168,11 +180,13 @@ After deployment:
 ## 💰 Cost Estimate
 
 ### Free Tier (Good for Starting)
+
 - **Vercel**: Unlimited deployments, 100GB bandwidth/month
 - **Railway**: $5 credit/month (enough for light usage)
 - **Render**: 750 hours/month free
 
 ### Paid (When You Scale)
+
 - **Vercel Pro**: $20/month
 - **Railway**: Usage-based (~$5-20/month)
 - **OpenAI API**: ~$0.01-0.05 per analysis with GPT-4
@@ -182,16 +196,19 @@ After deployment:
 ## 🐛 Troubleshooting
 
 ### API Returns 500 Error
+
 - Check Railway logs for errors
 - Verify `OPENAI_API_KEY` is set correctly
 - Check `PORT` environment variable
 
 ### Frontend Shows "Connection Refused"
+
 - Verify `NEXT_PUBLIC_API_URL` is correct
 - Check Railway API is running
 - Ensure CORS is enabled in API (already configured)
 
 ### Build Fails
+
 - Check Node.js version (should be 20+)
 - Verify all dependencies installed
 - Check build logs in Vercel/Railway
