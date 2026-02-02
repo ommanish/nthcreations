@@ -9,17 +9,20 @@ Your API is now protected against unauthorized usage and cost overruns.
 ## 🛡️ Security Layers Implemented
 
 ### 1. **Rate Limiting** (Per IP Address)
+
 - **General API**: 10 requests/minute
-- **AI Analysis**: 20 requests/hour  
+- **AI Analysis**: 20 requests/hour
 - **Daily AI Limit**: 100 total AI requests/day
 
 ### 2. **Request Validation**
+
 - Maximum 50 steps per flow analysis
 - Maximum 500 characters for goal description
 - File size limit: 10MB
 - JSON payload limit: 1MB
 
 ### 3. **Cost Tracking**
+
 - Monitors total daily AI usage
 - Alerts at 80% of daily limit
 - Hard stop at 100 requests/day
@@ -30,18 +33,21 @@ Your API is now protected against unauthorized usage and cost overruns.
 ## 📊 Current Limits & Costs
 
 ### API Rate Limits
-| Endpoint | Rate Limit | Per |
-|----------|------------|-----|
-| All endpoints | 10 requests | 1 minute |
-| AI analysis endpoints | 20 requests | 1 hour |
-| AI total (all IPs) | 100 requests | 24 hours |
+
+| Endpoint              | Rate Limit   | Per      |
+| --------------------- | ------------ | -------- |
+| All endpoints         | 10 requests  | 1 minute |
+| AI analysis endpoints | 20 requests  | 1 hour   |
+| AI total (all IPs)    | 100 requests | 24 hours |
 
 ### OpenAI Cost Estimates
-| Model | Cost per 1K tokens | Typical Analysis Cost |
-|-------|-------------------|----------------------|
-| GPT-4 Turbo | $0.01 input / $0.03 output | $0.01 - $0.05 |
+
+| Model       | Cost per 1K tokens         | Typical Analysis Cost |
+| ----------- | -------------------------- | --------------------- |
+| GPT-4 Turbo | $0.01 input / $0.03 output | $0.01 - $0.05         |
 
 **With 100 AI requests/day limit:**
+
 - Maximum daily cost: ~$5
 - Maximum monthly cost: ~$150
 
@@ -53,9 +59,9 @@ Edit `/apps/api/src/middleware/security.ts`:
 
 ```typescript
 // Change these values:
-const MAX_REQUESTS_PER_MINUTE = 10;      // General rate limit
-const MAX_AI_REQUESTS_PER_HOUR = 20;     // AI per user
-const DAILY_AI_LIMIT = 100;               // Total AI per day
+const MAX_REQUESTS_PER_MINUTE = 10; // General rate limit
+const MAX_AI_REQUESTS_PER_HOUR = 20; // AI per user
+const DAILY_AI_LIMIT = 100; // Total AI per day
 ```
 
 ---
@@ -63,9 +69,11 @@ const DAILY_AI_LIMIT = 100;               // Total AI per day
 ## 📈 Monitoring Your Usage
 
 ### 1. **Check Render Logs**
+
 Go to: https://dashboard.render.com → Your service → Logs
 
 Look for:
+
 ```
 [COST] Daily AI usage: 45/100
 [COST WARNING] 80% of daily AI limit used: 82/100
@@ -73,9 +81,11 @@ Look for:
 ```
 
 ### 2. **OpenAI Dashboard**
+
 Go to: https://platform.openai.com/usage
 
 Monitor:
+
 - Daily token usage
 - Cost trends
 - Set up billing alerts
@@ -85,6 +95,7 @@ Monitor:
 ## 🚨 What Users See When Limits Hit
 
 ### Rate Limit Exceeded
+
 ```json
 {
   "error": "Too many requests",
@@ -94,6 +105,7 @@ Monitor:
 ```
 
 ### AI Rate Limit Exceeded
+
 ```json
 {
   "error": "AI rate limit exceeded",
@@ -103,6 +115,7 @@ Monitor:
 ```
 
 ### Daily Limit Reached
+
 ```json
 {
   "error": "Daily AI limit reached",
@@ -117,13 +130,17 @@ Monitor:
 For extra security, require an API key from your frontend:
 
 ### 1. Set Environment Variable
+
 In Render, add:
+
 ```
 API_KEY=your-secret-key-here-generate-random-string
 ```
 
 ### 2. Update Frontend
+
 Add to all API calls:
+
 ```typescript
 headers: {
   'X-API-Key': process.env.NEXT_PUBLIC_API_KEY
@@ -131,6 +148,7 @@ headers: {
 ```
 
 ### 3. Enable Authentication
+
 The middleware already checks for `X-API-Key` header if `API_KEY` env var is set.
 
 ---
@@ -142,6 +160,7 @@ Currently set to allow all origins (`*`).
 To restrict to your frontend only:
 
 ### In Render Environment Variables:
+
 ```
 ALLOWED_ORIGINS=https://nthcreations-app.vercel.app,http://localhost:3000
 ```

@@ -19,21 +19,25 @@ const MAX_REQUESTS_PER_MINUTE = 10; // Max 10 requests per minute per IP
 const MAX_AI_REQUESTS_PER_HOUR = 20; // Max 20 AI requests per hour per IP
 
 // Clean up old entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitStore.entries()) {
-    if (entry.resetTime < now) {
-      rateLimitStore.delete(key);
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [key, entry] of rateLimitStore.entries()) {
+      if (entry.resetTime < now) {
+        rateLimitStore.delete(key);
+      }
     }
-  }
-}, 5 * 60 * 1000);
+  },
+  5 * 60 * 1000,
+);
 
 function getClientId(req: Request): string {
   // Use IP address as identifier
   const forwarded = req.headers["x-forwarded-for"];
-  const ip = typeof forwarded === "string" 
-    ? forwarded.split(",")[0].trim() 
-    : req.socket.remoteAddress || "unknown";
+  const ip =
+    typeof forwarded === "string"
+      ? forwarded.split(",")[0].trim()
+      : req.socket.remoteAddress || "unknown";
   return ip;
 }
 
@@ -72,7 +76,7 @@ export function rateLimiter(maxRequests: number = MAX_REQUESTS_PER_MINUTE) {
 
 export function aiRateLimiter() {
   const AI_LIMIT_WINDOW = 60 * 60 * 1000; // 1 hour
-  
+
   return (req: Request, res: Response, next: NextFunction) => {
     const clientId = getClientId(req);
     const now = Date.now();
@@ -186,16 +190,21 @@ export function trackCost(req: Request, res: Response, next: NextFunction) {
   entry.count++;
 
   if (entry.count >= DAILY_AI_LIMIT) {
-    console.error(`[COST ALERT] Daily AI limit reached: ${entry.count}/${DAILY_AI_LIMIT}`);
+    console.error(
+      `[COST ALERT] Daily AI limit reached: ${entry.count}/${DAILY_AI_LIMIT}`,
+    );
     return res.status(429).json({
       error: "Daily AI limit reached",
-      message: "The daily AI analysis limit has been reached. Please try rule-based analysis (disable AI toggle) or try again tomorrow.",
+      message:
+        "The daily AI analysis limit has been reached. Please try rule-based analysis (disable AI toggle) or try again tomorrow.",
     });
   }
 
   // Warning at 80%
   if (entry.count >= DAILY_AI_LIMIT * 0.8) {
-    console.warn(`[COST WARNING] 80% of daily AI limit used: ${entry.count}/${DAILY_AI_LIMIT}`);
+    console.warn(
+      `[COST WARNING] 80% of daily AI limit used: ${entry.count}/${DAILY_AI_LIMIT}`,
+    );
   }
 
   console.log(`[COST] Daily AI usage: ${entry.count}/${DAILY_AI_LIMIT}`);

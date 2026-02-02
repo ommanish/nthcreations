@@ -11,7 +11,19 @@ import multer from "multer";
 import OpenAI from "openai";
 import dotenv from "dotenv";
 import crypto from "crypto";
-import { rateLimiter, aiRateLimiter, validateRequestSize, trackCost } from "./middleware/security";
+import {
+  rateLimiter,
+  aiRateLimiter,
+  validateRequestSize,
+  trackCost,
+} from "./middleware/security";
+import {
+  logRequest,
+  logResponse,
+  getAnalytics,
+  getTopEndpoints,
+  getRecentErrors,
+} from "./middleware/analytics";
 
 // ============================================================================
 // Environment & Configuration
@@ -81,15 +93,32 @@ interface UXPrinciple {
 const app = express();
 
 // Security: CORS configuration
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: process.env.ALLOWED_ORIGINS?.split(",") || "*",
+    credentials: true,
+  }),
+);
 
 app.use(express.json({ limit: CONFIG.JSON_LIMIT }));
 
 // Security: Global rate limiting
 app.use(rateLimiter());
+
+// Analytics: Request logging middleware
+app.use((req, res, next) => {
+  const startTime = Date.now();
+  const useAI = req.query.ai === "true";
+  const log = logRequest(req, useAI);
+
+  // Capture response
+  res.on("finish", () => {
+    const duration = Date.now() - startTime;
+    logResponse(log, res.statusCode, duration);
+  });
+
+  next();
+});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -113,7 +142,8 @@ const UX_PRINCIPLES: UXPrinciple[] = [
     id: "principle_human_in_loop",
     name: "Human-in-the-Loop Control",
     category: "CONTROL",
-    description: "Users must have the ability to review and approve actions before the AI executes them.",
+    description:
+      "Users must have the ability to review and approve actions before the AI executes them.",
     why: "Automated actions without oversight can lead to loss of trust and user frustration.",
     examples: [
       "Show a preview before posting to social media",
@@ -125,7 +155,8 @@ const UX_PRINCIPLES: UXPrinciple[] = [
     id: "principle_explainability",
     name: "Transparent Reasoning",
     category: "TRANSPARENCY",
-    description: "AI systems should explain why they made decisions using clear language.",
+    description:
+      "AI systems should explain why they made decisions using clear language.",
     why: "Users can't trust what they don't understand. Explanations build mental models.",
     examples: [
       "Show 'I chose this because...' explanations",
@@ -137,7 +168,8 @@ const UX_PRINCIPLES: UXPrinciple[] = [
     id: "principle_graceful_failure",
     name: "Graceful Failure & Recovery",
     category: "RECOVERY",
-    description: "Systems must handle errors elegantly with clear recovery paths.",
+    description:
+      "Systems must handle errors elegantly with clear recovery paths.",
     why: "How a system handles failures determines user confidence.",
     examples: [
       "Offer retry options",
@@ -209,7 +241,8 @@ const UX_PRINCIPLES: UXPrinciple[] = [
     id: "principle_trust_calibration",
     name: "Appropriate Trust Calibration",
     category: "TRUST",
-    description: "Help users understand when to trust AI by showing confidence levels.",
+    description:
+      "Help users understand when to trust AI by showing confidence levels.",
     why: "Over-trust can be as harmful as distrust.",
     examples: [
       "Display confidence percentages",
@@ -283,9 +316,16 @@ function runRules(flow: Flow): Finding[] {
 
   // Rule 1: Missing error handling
   const hasFailure = flow.steps.some((s) =>
-    includesAny(s.text, ["error", "fail", "retry", "fallback", "recover", "undo"])
+    includesAny(s.text, [
+      "error",
+      "fail",
+      "retry",
+      "fallback",
+      "recover",
+      "undo",
+    ]),
   );
-  
+
   if (!hasFailure) {
     findings.push({
       id: crypto.randomUUID(),
@@ -316,7 +356,7 @@ function runRules(flow: Flow): Finding[] {
       "verify",
       "preview",
       "user approves",
-    ])
+    ]),
   );
   const hasAutoAct = flow.steps.some((s) =>
     includesAny(s.text, [
@@ -327,7 +367,7 @@ function runRules(flow: Flow): Finding[] {
       "ai does",
       "system sends",
       "publish",
-    ])
+    ]),
   );
 
   if (!hasApproval && hasAutoAct) {
@@ -359,7 +399,7 @@ function runRules(flow: Flow): Finding[] {
       "explains",
       "explanation",
       "shows rationale",
-    ])
+    ]),
   );
 
   if (!hasExplain) {
@@ -391,7 +431,7 @@ function runRules(flow: Flow): Finding[] {
       "working",
       "status",
       "indicator",
-    ])
+    ]),
   );
 
   if (!hasProgress && flow.steps.length > 3) {
@@ -423,7 +463,7 @@ function runRules(flow: Flow): Finding[] {
       "history",
       "context",
       "saved",
-    ])
+    ]),
   );
 
   if (!hasMemory && flow.steps.length > 2) {
@@ -448,7 +488,14 @@ function runRules(flow: Flow): Finding[] {
 
   // Rule 6: Missing undo/edit
   const hasUndo = flow.steps.some((s) =>
-    includesAny(s.text, ["undo", "edit", "modify", "change", "revert", "cancel"])
+    includesAny(s.text, [
+      "undo",
+      "edit",
+      "modify",
+      "change",
+      "revert",
+      "cancel",
+    ]),
   );
 
   if (!hasUndo && hasAutoAct) {
@@ -480,7 +527,7 @@ function runRules(flow: Flow): Finding[] {
       "credential",
       "badge",
       "certification",
-    ])
+    ]),
   );
 
   if (!hasTrust && hasAutoAct) {
@@ -513,7 +560,7 @@ function runRules(flow: Flow): Finding[] {
       "may",
       "uncertain",
       "probability",
-    ])
+    ]),
   );
 
   if (!hasConfidence && hasAutoAct) {
@@ -621,7 +668,7 @@ Return JSON with detailed, specific findings. Include evidence from the flow in 
 
 async function runHybridAnalysis(
   flow: Flow,
-  useAI: boolean = false
+  useAI: boolean = false,
 ): Promise<Finding[]> {
   const ruleFindings = runRules(flow);
 
@@ -634,7 +681,7 @@ async function runHybridAnalysis(
   // Deduplicate: AI findings override rule findings in same category
   const aiCategories = new Set(aiFindings.map((f) => f.category));
   const filteredRuleFindings = ruleFindings.filter(
-    (rf) => !aiCategories.has(rf.category)
+    (rf) => !aiCategories.has(rf.category),
   );
 
   const combined = [...aiFindings, ...filteredRuleFindings];
@@ -689,6 +736,22 @@ app.get("/status", (_req, res) => {
 });
 
 // ============================================================================
+// Routes - Analytics & Monitoring
+// ============================================================================
+
+app.get("/analytics", (_req, res) => {
+  res.json(getAnalytics());
+});
+
+app.get("/analytics/top-endpoints", (_req, res) => {
+  res.json(getTopEndpoints());
+});
+
+app.get("/analytics/errors", (_req, res) => {
+  res.json(getRecentErrors());
+});
+
+// ============================================================================
 // Routes - UX Principles
 // ============================================================================
 
@@ -710,11 +773,11 @@ app.get("/principles/:id", (req, res) => {
 
 app.post("/flows", (req, res) => {
   const { goal, steps } = req.body ?? {};
-  
+
   if (!goal || typeof goal !== "string") {
     return res.status(400).json({ error: "goal is required" });
   }
-  
+
   if (!Array.isArray(steps) || steps.length === 0) {
     return res.status(400).json({ error: "steps required" });
   }
@@ -759,7 +822,7 @@ app.get("/flows/:id", (req, res) => {
 app.post("/analyze/url", validateRequestSize(), async (req, res) => {
   try {
     const { url } = req.body;
-    
+
     if (!url || typeof url !== "string") {
       return res.status(400).json({ error: "url is required" });
     }
@@ -770,7 +833,7 @@ app.post("/analyze/url", validateRequestSize(), async (req, res) => {
     if (useAI) {
       const aiLimit = aiRateLimiter();
       const costTrack = trackCost;
-      
+
       // Apply AI rate limiting
       return new Promise((resolve) => {
         aiLimit(req, res, () => {
@@ -788,9 +851,13 @@ app.post("/analyze/url", validateRequestSize(), async (req, res) => {
   }
 });
 
-async function processUrlAnalysis(req: any, res: any, url: string, useAI: boolean) {
+async function processUrlAnalysis(
+  req: any,
+  res: any,
+  url: string,
+  useAI: boolean,
+) {
   try {
-
     // Fetch webpage
     const response = await axios.get(url, { timeout: 10000 });
     const text = extractTextFromHTML(response.data);
@@ -804,7 +871,9 @@ async function processUrlAnalysis(req: any, res: any, url: string, useAI: boolea
       "No description available";
 
     // Extract flow elements
-    const headings = $("h1, h2, h3").map((_, el) => $(el).text().trim()).get();
+    const headings = $("h1, h2, h3")
+      .map((_, el) => $(el).text().trim())
+      .get();
     const lists = $("ul, ol").length;
     const buttons = $("button, [role='button']").length;
     const forms = $("form").length;
@@ -820,10 +889,13 @@ async function processUrlAnalysis(req: any, res: any, url: string, useAI: boolea
     const flow: Flow = {
       id: crypto.randomUUID(),
       goal: goalHint,
-      steps: stepsHint.length > 0 ? stepsHint : [
-        { id: "step-1", text: "Visit website" },
-        { id: "step-2", text: "Browse content" },
-      ],
+      steps:
+        stepsHint.length > 0
+          ? stepsHint
+          : [
+              { id: "step-1", text: "Visit website" },
+              { id: "step-2", text: "Browse content" },
+            ],
       createdAt: now,
       updatedAt: now,
       source: "url",
@@ -836,8 +908,10 @@ async function processUrlAnalysis(req: any, res: any, url: string, useAI: boolea
     const findings = await runHybridAnalysis(flow, useAI);
     const overallRisk = calculateOverallRisk(findings);
     const highlights = extractHighlights(findings);
-    
-    const principleIds = [...new Set(findings.map((f) => f.principleId).filter(Boolean))];
+
+    const principleIds = [
+      ...new Set(findings.map((f) => f.principleId).filter(Boolean)),
+    ];
     const principles = UX_PRINCIPLES.filter((p) => principleIds.includes(p.id));
 
     return res.json({
@@ -867,37 +941,47 @@ async function processUrlAnalysis(req: any, res: any, url: string, useAI: boolea
 // Routes - Analysis (File Upload)
 // ============================================================================
 
-app.post("/analyze/upload", upload.single("file"), validateRequestSize(), async (req, res) => {
-  try {
-    const file = req.file;
-    if (!file) {
-      return res.status(400).json({ error: "file is required" });
-    }
+app.post(
+  "/analyze/upload",
+  upload.single("file"),
+  validateRequestSize(),
+  async (req, res) => {
+    try {
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ error: "file is required" });
+      }
 
-    const useAI = req.query.ai === "true";
+      const useAI = req.query.ai === "true";
 
-    // AI requests have stricter limits
-    if (useAI) {
-      const aiLimit = aiRateLimiter();
-      const costTrack = trackCost;
-      
-      return new Promise((resolve) => {
-        aiLimit(req, res, () => {
-          costTrack(req, res, () => {
-            resolve(processFileAnalysis(req, res, file, useAI));
+      // AI requests have stricter limits
+      if (useAI) {
+        const aiLimit = aiRateLimiter();
+        const costTrack = trackCost;
+
+        return new Promise((resolve) => {
+          aiLimit(req, res, () => {
+            costTrack(req, res, () => {
+              resolve(processFileAnalysis(req, res, file, useAI));
+            });
           });
         });
-      });
+      }
+
+      return processFileAnalysis(req, res, file, useAI);
+    } catch (error: any) {
+      console.error("File upload error:", error);
+      res.status(500).json({ error: "Failed to process file upload" });
     }
+  },
+);
 
-    return processFileAnalysis(req, res, file, useAI);
-  } catch (error: any) {
-    console.error("File upload error:", error);
-    res.status(500).json({ error: "Failed to process file upload" });
-  }
-});
-
-async function processFileAnalysis(req: any, res: any, file: any, useAI: boolean) {
+async function processFileAnalysis(
+  req: any,
+  res: any,
+  file: any,
+  useAI: boolean,
+) {
   try {
     let content = "";
 
@@ -910,8 +994,10 @@ async function processFileAnalysis(req: any, res: any, file: any, useAI: boolean
 
     // Parse content into flow
     const lines = content.split("\n").filter((l) => l.trim().length > 0);
-    const goalLine = lines.find((l) =>
-      l.toLowerCase().includes("goal") || l.toLowerCase().includes("objective")
+    const goalLine = lines.find(
+      (l) =>
+        l.toLowerCase().includes("goal") ||
+        l.toLowerCase().includes("objective"),
     );
     const goal = goalLine || lines[0] || "Analyze uploaded flow";
 
@@ -926,9 +1012,10 @@ async function processFileAnalysis(req: any, res: any, file: any, useAI: boolean
     const flow: Flow = {
       id: crypto.randomUUID(),
       goal: goal.replace(/^(goal|objective)[:\s]*/i, "").trim(),
-      steps: stepLines.length > 0 ? stepLines : [
-        { id: "step-1", text: "Review uploaded content" },
-      ],
+      steps:
+        stepLines.length > 0
+          ? stepLines
+          : [{ id: "step-1", text: "Review uploaded content" }],
       createdAt: now,
       updatedAt: now,
       source: "upload",
@@ -940,8 +1027,10 @@ async function processFileAnalysis(req: any, res: any, file: any, useAI: boolean
     const findings = await runHybridAnalysis(flow, useAI);
     const overallRisk = calculateOverallRisk(findings);
     const highlights = extractHighlights(findings);
-    
-    const principleIds = [...new Set(findings.map((f) => f.principleId).filter(Boolean))];
+
+    const principleIds = [
+      ...new Set(findings.map((f) => f.principleId).filter(Boolean)),
+    ];
     const principles = UX_PRINCIPLES.filter((p) => principleIds.includes(p.id));
 
     return res.json({
@@ -989,7 +1078,7 @@ app.post("/flows/:id/analyze", validateRequestSize(), async (req, res) => {
   if (useAI) {
     const aiLimit = aiRateLimiter();
     const costTrack = trackCost;
-    
+
     return new Promise((resolve) => {
       aiLimit(req, res, () => {
         costTrack(req, res, async () => {
@@ -1008,15 +1097,17 @@ async function performFlowAnalysis(flow: Flow, useAI: boolean, res: any) {
     const overallRisk = calculateOverallRisk(findings);
     const highlights = extractHighlights(findings);
 
-    const principleIds = [...new Set(findings.map((f) => f.principleId).filter(Boolean))];
+    const principleIds = [
+      ...new Set(findings.map((f) => f.principleId).filter(Boolean)),
+    ];
     const principles = UX_PRINCIPLES.filter((p) => principleIds.includes(p.id));
 
     return res.json({
       product: "Nthcreation",
-    version: "2.0.0",
-    analysisId: crypto.randomUUID(),
-    flowId: flow.id,
-    findings,
+      version: "2.0.0",
+      analysisId: crypto.randomUUID(),
+      flowId: flow.id,
+      findings,
       summary: { overallRisk, highlights },
       principles,
       aiEnhanced: useAI && AI_ENABLED,
