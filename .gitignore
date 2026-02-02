@@ -6,9 +6,11 @@ node_modules/
 .env
 .env.local
 .env.*.local
-.env.development
-.env.staging
-.env.production
+# Keep environment templates
+!apps/web/.env.development
+!apps/web/.env.staging
+!apps/web/.env.production
+!apps/api/.env.example
 
 # Build outputs
 dist/
