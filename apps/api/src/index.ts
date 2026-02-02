@@ -11,6 +11,7 @@ import multer from "multer";
 import OpenAI from "openai";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import { rateLimiter, aiRateLimiter, validateRequestSize, trackCost } from "./middleware/security";
 
 // ============================================================================
 // Environment & Configuration
@@ -78,8 +79,17 @@ interface UXPrinciple {
 // ============================================================================
 
 const app = express();
-app.use(cors());
+
+// Security: CORS configuration
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
+  credentials: true,
+}));
+
 app.use(express.json({ limit: CONFIG.JSON_LIMIT }));
+
+// Security: Global rate limiting
+app.use(rateLimiter());
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -746,7 +756,7 @@ app.get("/flows/:id", (req, res) => {
 // Routes - Analysis (URL)
 // ============================================================================
 
-app.post("/analyze/url", async (req, res) => {
+app.post("/analyze/url", validateRequestSize(), async (req, res) => {
   try {
     const { url } = req.body;
     
@@ -755,6 +765,31 @@ app.post("/analyze/url", async (req, res) => {
     }
 
     const useAI = req.query.ai === "true";
+
+    // AI requests have stricter limits
+    if (useAI) {
+      const aiLimit = aiRateLimiter();
+      const costTrack = trackCost;
+      
+      // Apply AI rate limiting
+      return new Promise((resolve) => {
+        aiLimit(req, res, () => {
+          costTrack(req, res, () => {
+            resolve(processUrlAnalysis(req, res, url, useAI));
+          });
+        });
+      });
+    }
+
+    return processUrlAnalysis(req, res, url, useAI);
+  } catch (error: any) {
+    console.error("URL analysis error:", error);
+    res.status(500).json({ error: "Failed to analyze URL" });
+  }
+});
+
+async function processUrlAnalysis(req: any, res: any, url: string, useAI: boolean) {
+  try {
 
     // Fetch webpage
     const response = await axios.get(url, { timeout: 10000 });
@@ -805,7 +840,7 @@ app.post("/analyze/url", async (req, res) => {
     const principleIds = [...new Set(findings.map((f) => f.principleId).filter(Boolean))];
     const principles = UX_PRINCIPLES.filter((p) => principleIds.includes(p.id));
 
-    res.json({
+    return res.json({
       product: "Nthcreation",
       version: "2.0.0",
       flow,
@@ -823,19 +858,16 @@ app.post("/analyze/url", async (req, res) => {
       },
     });
   } catch (error: any) {
-    console.error("URL analysis error:", error.message);
-    res.status(500).json({
-      error: "Failed to analyze URL",
-      details: error.message,
-    });
+    console.error("URL processing error:", error);
+    return res.status(500).json({ error: "Failed to process URL analysis" });
   }
-});
+}
 
 // ============================================================================
 // Routes - Analysis (File Upload)
 // ============================================================================
 
-app.post("/analyze/upload", upload.single("file"), async (req, res) => {
+app.post("/analyze/upload", upload.single("file"), validateRequestSize(), async (req, res) => {
   try {
     const file = req.file;
     if (!file) {
@@ -843,6 +875,30 @@ app.post("/analyze/upload", upload.single("file"), async (req, res) => {
     }
 
     const useAI = req.query.ai === "true";
+
+    // AI requests have stricter limits
+    if (useAI) {
+      const aiLimit = aiRateLimiter();
+      const costTrack = trackCost;
+      
+      return new Promise((resolve) => {
+        aiLimit(req, res, () => {
+          costTrack(req, res, () => {
+            resolve(processFileAnalysis(req, res, file, useAI));
+          });
+        });
+      });
+    }
+
+    return processFileAnalysis(req, res, file, useAI);
+  } catch (error: any) {
+    console.error("File upload error:", error);
+    res.status(500).json({ error: "Failed to process file upload" });
+  }
+});
+
+async function processFileAnalysis(req: any, res: any, file: any, useAI: boolean) {
+  try {
     let content = "";
 
     // Extract content based on file type
@@ -888,7 +944,7 @@ app.post("/analyze/upload", upload.single("file"), async (req, res) => {
     const principleIds = [...new Set(findings.map((f) => f.principleId).filter(Boolean))];
     const principles = UX_PRINCIPLES.filter((p) => principleIds.includes(p.id));
 
-    res.json({
+    return res.json({
       product: "Nthcreation",
       version: "2.0.0",
       flow,
@@ -908,43 +964,71 @@ app.post("/analyze/upload", upload.single("file"), async (req, res) => {
       },
     });
   } catch (error: any) {
-    console.error("File upload analysis error:", error.message);
-    res.status(500).json({
+    console.error("File processing error:", error);
+    return res.status(500).json({
       error: "Failed to analyze file",
       details: error.message,
     });
   }
-});
+}
 
 // ============================================================================
 // Routes - Analysis (Existing Flow)
 // ============================================================================
 
-app.post("/flows/:id/analyze", async (req, res) => {
+app.post("/flows/:id/analyze", validateRequestSize(), async (req, res) => {
   const flow = flows.get(req.params.id);
+
   if (!flow) {
     return res.status(404).json({ error: "Flow not found" });
   }
 
   const useAI = req.query.ai === "true";
-  const findings = await runHybridAnalysis(flow, useAI);
-  const overallRisk = calculateOverallRisk(findings);
-  const highlights = extractHighlights(findings);
 
-  const principleIds = [...new Set(findings.map((f) => f.principleId).filter(Boolean))];
-  const principles = UX_PRINCIPLES.filter((p) => principleIds.includes(p.id));
+  // AI requests have stricter limits
+  if (useAI) {
+    const aiLimit = aiRateLimiter();
+    const costTrack = trackCost;
+    
+    return new Promise((resolve) => {
+      aiLimit(req, res, () => {
+        costTrack(req, res, async () => {
+          resolve(await performFlowAnalysis(flow, useAI, res));
+        });
+      });
+    });
+  }
 
-  res.json({
-    product: "Nthcreation",
+  return performFlowAnalysis(flow, useAI, res);
+});
+
+async function performFlowAnalysis(flow: Flow, useAI: boolean, res: any) {
+  try {
+    const findings = await runHybridAnalysis(flow, useAI);
+    const overallRisk = calculateOverallRisk(findings);
+    const highlights = extractHighlights(findings);
+
+    const principleIds = [...new Set(findings.map((f) => f.principleId).filter(Boolean))];
+    const principles = UX_PRINCIPLES.filter((p) => principleIds.includes(p.id));
+
+    return res.json({
+      product: "Nthcreation",
     version: "2.0.0",
     analysisId: crypto.randomUUID(),
     flowId: flow.id,
     findings,
-    summary: { overallRisk, highlights },
-    principles,
-    aiEnhanced: useAI && AI_ENABLED,
-  });
-});
+      summary: { overallRisk, highlights },
+      principles,
+      aiEnhanced: useAI && AI_ENABLED,
+    });
+  } catch (error: any) {
+    console.error("Flow analysis error:", error);
+    return res.status(500).json({
+      error: "Failed to analyze flow",
+      details: error.message,
+    });
+  }
+}
 
 // ============================================================================
 // Server Start
@@ -952,6 +1036,10 @@ app.post("/flows/:id/analyze", async (req, res) => {
 
 app.listen(CONFIG.PORT, () => {
   console.log(`API running on http://localhost:${CONFIG.PORT}`);
+  console.log(`Security: Rate limiting enabled`);
+  console.log(`- General: 10 requests/minute per IP`);
+  console.log(`- AI Analysis: 20 requests/hour per IP`);
+  console.log(`- Daily AI Limit: 100 total requests`);
 });
 
 export default app;
