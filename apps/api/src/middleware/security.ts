@@ -138,6 +138,11 @@ export function requireApiKey(req: Request, res: Response, next: NextFunction) {
 
 export function validateRequestSize(maxSteps: number = 50) {
   return (req: Request, res: Response, next: NextFunction) => {
+    // Skip validation if no body (e.g., analyzing existing flow)
+    if (!req.body || Object.keys(req.body).length === 0) {
+      return next();
+    }
+
     const { steps, goal } = req.body;
 
     if (steps && Array.isArray(steps) && steps.length > maxSteps) {
